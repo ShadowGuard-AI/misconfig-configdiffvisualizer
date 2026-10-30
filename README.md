@@ -1,3 +1,5 @@
+![Banner](banner.png)
+
 # misconfig-ConfigDiffVisualizer
 Generates a human-readable diff between two configuration files, highlighting added, removed, and modified settings. Uses the diff-match-patch library to create a visually clear comparison, especially useful for understanding configuration changes over time. - Focused on Check for misconfigurations in configuration files or infrastructure definitions
 

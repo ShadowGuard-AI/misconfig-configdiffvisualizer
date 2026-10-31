@@ -81,22 +81,28 @@ def read_file(file_path, file_type):
     """
     try:
         with open(file_path, 'r') as f:
-            if file_type == 'yaml':
-                try:
-                    data = yaml.safe_load(f)
-                    return yaml.dump(data, indent=2)
-                except yaml.YAMLError as e:
-                    logging.error(f"Error parsing YAML file {file_path}: {e}")
-                    return None
-            elif file_type == 'json':
-                try:
-                    data = json.load(f)
-                    return json.dumps(data, indent=2)
-                except json.JSONDecodeError as e:
-                    logging.error(f"Error parsing JSON file {file_path}: {e}")
-                    return None
-            else:  # Text file
-                return f.read()
+            content = f.read()
+        if not content.strip():
+            # An empty file parses to None, and dumping None would render a
+            # page holding the literal text null that was never in the file.
+            logging.error(f"Empty input file: {file_path}. Nothing to visualize.")
+            return None
+        if file_type == 'yaml':
+            try:
+                data = yaml.safe_load(content)
+                return yaml.dump(data, indent=2)
+            except yaml.YAMLError as e:
+                logging.error(f"Error parsing YAML file {file_path}: {e}")
+                return None
+        elif file_type == 'json':
+            try:
+                data = json.loads(content)
+                return json.dumps(data, indent=2)
+            except json.JSONDecodeError as e:
+                logging.error(f"Error parsing JSON file {file_path}: {e}")
+                return None
+        else:  # Text file
+            return content
     except FileNotFoundError:
         logging.error(f"File not found: {file_path}")
         return None
@@ -160,6 +166,14 @@ def main():
         logging.error(f"File not found: {args.file2}")
         sys.exit(1)
 
+    # The output may not be either input, under any spelling of the path.
+    if args.output:
+        resolved_output = os.path.realpath(args.output)
+        for input_path in (args.file1, args.file2):
+            if resolved_output == os.path.realpath(input_path):
+                logging.error(f"Output file is the same as the input file: {args.output}. Refusing to overwrite the input.")
+                print(f"Error: Output file is the same as the input file: {args.output}. Refusing to overwrite the input.")
+                sys.exit(1)
 
     # Determine file type
     file_type = args.type

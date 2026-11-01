@@ -45,6 +45,9 @@ def validate_file(file_path, file_type):
                 subprocess.run(['yamllint', file_path], check=True, capture_output=True, text=True)
                 return True
             except FileNotFoundError:
+                # When the linter binary is absent I return the same True as a
+                # clean pass, just below. Validation is a courtesy here, not a
+                # gate, and this warning is the only sign it never happened.
                 logging.warning("yamllint not found. Skipping YAML validation. Please install yamllint to enable validation.")
                 return True
             except subprocess.CalledProcessError as e:
@@ -90,6 +93,11 @@ def read_file(file_path, file_type):
         if file_type == 'yaml':
             try:
                 data = yaml.safe_load(content)
+                # Both formats are parsed and dumped back before any diffing,
+                # so the page compares my normalised rendering, not the files
+                # as written. The two dumps differ in one respect I did not
+                # smooth over: yaml.dump sorts keys by default, while the
+                # json.dumps below keeps the order the file had.
                 return yaml.dump(data, indent=2)
             except yaml.YAMLError as e:
                 logging.error(f"Error parsing YAML file {file_path}: {e}")
@@ -128,6 +136,10 @@ def detect_file_type(file_path):
     elif ext == '.json':
         return 'json'
     else:
+        # Unknown means text, never an error. A YAML file with a .conf
+        # suffix is compared as raw text, formatting and all, which is
+        # a different comparison than the parsed one it would get as
+        # .yaml, and nothing in the output says which mode ran.
         return 'text' # Default to text if extension is unknown
 
 def generate_diff_html(text1, text2, ignore_whitespace=False):
@@ -143,11 +155,21 @@ def generate_diff_html(text1, text2, ignore_whitespace=False):
         str: The HTML diff.
     """
     if ignore_whitespace:
+        # Stripping every line throws away indentation along with stray
+        # spaces. For the parsed formats above that mostly costs
+        # nothing, because the dumps reindent anyway, but on raw text it
+        # also erases the difference between a line and the same line
+        # nested three levels deeper.
         text1 = '\n'.join(line.strip() for line in text1.splitlines())
         text2 = '\n'.join(line.strip() for line in text2.splitlines())
 
     dmp = diff_match_patch()
     diff = dmp.diff_main(text1, text2)
+    # The diff runs character by character over the whole document,
+    # not line by line, and the semantic cleanup then merges small
+    # fragments into readable chunks. On a large config that makes
+    # for a fine grained page where a moved block shows as many
+    # small edits rather than one move.
     dmp.diff_cleanupSemantic(diff)
     return dmp.diff_prettyHtml(diff)
 
@@ -178,6 +200,11 @@ def main():
     # Determine file type
     file_type = args.type
     if not file_type:
+        # Only the first file decides the type. When the second file
+        # detects differently I warn and carry on with the first file's
+        # type for both, so a JSON second file is parsed as YAML, which
+        # usually works because YAML accepts JSON, and a YAML second
+        # file under a JSON verdict fails to parse and ends the run.
         file_type = detect_file_type(args.file1)
         if file_type != detect_file_type(args.file2):
             logging.warning("File types of the two files appear to be different. Please specify the file type using the -t option for more accurate comparison.")
